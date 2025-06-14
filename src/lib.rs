@@ -24,9 +24,18 @@ asr::panic_handler!();
 
 #[derive(Gui)]
 struct Settings {
-    /// Split on Easter Egg Collection
-    #[default = true]
+    /// Split on easter egg collection
+    ///
+    /// If checked, split when collecting an easter egg.
+    #[default = false]
     split_on_egg: bool,
+
+    /// Only start timer on first level
+    ///
+    /// If checked, the timer will not start unless you play the first level in a difficulty. This makes practicing
+    /// later levels easier without messing up your splits.
+    #[default = true]
+    only_start_on_first: bool,
 }
 
 async fn main() {
@@ -131,8 +140,14 @@ async fn main() {
                             if level_started.changed() {
                                 print_limited::<128>(&format_args!("Level started changed: {} -> {}", level_started.old, level_started.current));
                                 if level_started.current {
-                                    timer::start();
-                                    timer::pause_game_time();
+                                    let mut should_start:bool = true;
+                                    if settings.only_start_on_first {
+                                        should_start = level.current == 1 || level.current == 21 || level.current == 41;
+                                    }
+                                    if should_start {
+                                        timer::start();
+                                        timer::pause_game_time();
+                                    }
                                 }
                             }
                         }
