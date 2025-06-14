@@ -24,10 +24,9 @@ asr::panic_handler!();
 
 #[derive(Gui)]
 struct Settings {
-    /// My Setting
+    /// Split on Easter Egg Collection
     #[default = true]
-    my_setting: bool,
-    // TODO: Change these settings.
+    split_on_egg: bool,
 }
 
 async fn main() {
@@ -148,7 +147,7 @@ async fn main() {
                         if let Some(egg_found) = egg_found_watcher.pair {
                             if egg_found.changed() {
                                 print_limited::<128>(&format_args!("Egg found changed: {} -> {}", egg_found.old, egg_found.current));
-                                if egg_found.current {
+                                if egg_found.current && settings.split_on_egg {
                                     timer::split();
                                 }
                             }
