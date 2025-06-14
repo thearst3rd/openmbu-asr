@@ -133,6 +133,7 @@ async fn main() {
                                 print_limited::<128>(&format_args!("Level started changed: {} -> {}", level_started.old, level_started.current));
                                 if level_started.current {
                                     timer::start();
+                                    timer::pause_game_time();
                                 }
                             }
                         }
