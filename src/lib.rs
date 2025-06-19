@@ -18,6 +18,7 @@ const IS_LOADING_OFFSET: u32 = 20;
 const LEVEL_STARTED_OFFSET: u32 = 21;
 const LEVEL_FINISHED_OFFSET: u32 = 22;
 const EGG_FOUND_OFFSET: u32 = 23;
+const QUIT_TO_MENU_OFFSET: u32 = 24;
 
 asr::async_main!(stable);
 asr::panic_handler!();
@@ -36,6 +37,13 @@ struct Settings {
     /// later levels easier without messing up your splits.
     #[default = true]
     only_start_on_first: bool,
+
+    /// Auto reset on quitting (CAUTION!!)
+    ///
+    /// If checked, the run will automatically reset when quitting back to the menu if the last level you finished is
+    /// any level except the last level in a difficulty
+    #[default = false]
+    auto_reset: bool,
 }
 
 async fn main() {
@@ -70,6 +78,9 @@ async fn main() {
                 let mut level_started_watcher: Watcher<bool> = Watcher::new();
                 let mut level_finished_watcher: Watcher<bool> = Watcher::new();
                 let mut egg_found_watcher: Watcher<bool> = Watcher::new();
+                let mut quit_to_menu_watcher: Watcher<bool> = Watcher::new();
+
+                let mut last_level_finished: i32 = -1;
 
                 // Since we found the pointer, these should™ read successfully
                 if let Ok(level) = process.read(data_address + LEVEL_OFFSET) {
@@ -112,6 +123,14 @@ async fn main() {
                     egg_found_watcher.update_infallible(false);
                 }
 
+                if let Ok(quit_to_menu) = process.read(data_address + QUIT_TO_MENU_OFFSET) {
+                    print_limited::<128>(&format_args!("Initial value for quit to menu: {}", quit_to_menu));
+                    quit_to_menu_watcher.update_infallible(quit_to_menu);
+                } else {
+                    print_message("Failed to read quit_to_menu!!");
+                    quit_to_menu_watcher.update_infallible(false);
+                }
+
                 loop {
                     settings.update();
 
@@ -120,6 +139,7 @@ async fn main() {
                     level_started_watcher.update(process.read(data_address + LEVEL_STARTED_OFFSET).ok());
                     level_finished_watcher.update(process.read(data_address + LEVEL_FINISHED_OFFSET).ok());
                     egg_found_watcher.update(process.read(data_address + EGG_FOUND_OFFSET).ok());
+                    quit_to_menu_watcher.update(process.read(data_address + QUIT_TO_MENU_OFFSET).ok());
 
                     if let Some(level) = level_watcher.pair {
                         if level.changed() {
@@ -140,13 +160,15 @@ async fn main() {
                             if level_started.changed() {
                                 print_limited::<128>(&format_args!("Level started changed: {} -> {}", level_started.old, level_started.current));
                                 if level_started.current {
-                                    let mut should_start:bool = true;
-                                    if settings.only_start_on_first {
+                                    let mut should_start: bool = timer::state() == timer::TimerState::NotRunning;
+                                    if should_start && settings.only_start_on_first {
                                         should_start = level.current == 1 || level.current == 21 || level.current == 41;
                                     }
                                     if should_start {
                                         timer::start();
                                         timer::pause_game_time();
+                                        last_level_finished = -1;
+                                        print_limited::<128>(&format_args!("Last level finished: {}", last_level_finished));
                                     }
                                 }
                             }
@@ -156,6 +178,8 @@ async fn main() {
                                 print_limited::<128>(&format_args!("Level finished changed: {} -> {}", level_finished.old, level_finished.current));
                                 if level_finished.current {
                                     timer::split();
+                                    last_level_finished = level.current;
+                                    print_limited::<128>(&format_args!("Last level finished: {}", last_level_finished));
                                 }
                             }
                         }
@@ -164,6 +188,14 @@ async fn main() {
                                 print_limited::<128>(&format_args!("Egg found changed: {} -> {}", egg_found.old, egg_found.current));
                                 if egg_found.current && settings.split_on_egg {
                                     timer::split();
+                                }
+                            }
+                        }
+                        if let Some(quit_to_menu) = quit_to_menu_watcher.pair {
+                            if quit_to_menu.changed() {
+                                print_limited::<128>(&format_args!("Quit to menu changed: {} -> {}", quit_to_menu.old, quit_to_menu.current));
+                                if quit_to_menu.current && settings.auto_reset && (last_level_finished != 20 && last_level_finished != 40 && last_level_finished != 60) {
+                                    timer::reset();
                                 }
                             }
                         }
