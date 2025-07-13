@@ -177,8 +177,12 @@ async fn main() {
                         if let Some(quit_to_menu) = quit_to_menu_watcher.pair {
                             if quit_to_menu.changed() {
                                 print_limited::<128>(&format_args!("Quit to menu changed: {} -> {}", quit_to_menu.old, quit_to_menu.current));
-                                if quit_to_menu.current && settings.auto_reset && (last_level_finished != 20 && last_level_finished != 40 && last_level_finished != 60) {
-                                    timer::reset();
+                                if quit_to_menu.current && settings.auto_reset {
+                                    let not_last_level = last_level_finished != 20 && last_level_finished != 40 && last_level_finished != 60;
+                                    let got_easter_egg = settings.split_on_egg && egg_found_watcher.pair.unwrap().current;
+                                    if not_last_level && !got_easter_egg {
+                                        timer::reset();
+                                    }
                                 }
                             }
                         }
