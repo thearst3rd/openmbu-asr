@@ -14,11 +14,13 @@ static EXECUTABLE_NAMES: [&str; 6] = [
 static SIG: Signature<15> = Signature::new("4F 4D 42 55 5F 41 53 52 5F 61 62 63 64 65 66"); // "OMBU_ASR_abcdef"
 
 const LEVEL_OFFSET: u32 = 16;
-const IS_LOADING_OFFSET: u32 = 20;
-const LEVEL_STARTED_OFFSET: u32 = 21;
-const LEVEL_FINISHED_OFFSET: u32 = 22;
-const EGG_FOUND_OFFSET: u32 = 23;
-const QUIT_TO_MENU_OFFSET: u32 = 24;
+const FLAGS_OFFSET: u32 = 20;
+
+const FLAG_IS_LOADING: u32 = 1 << 0;
+const FLAG_LEVEL_STARTED: u32 = 1 << 1;
+const FLAG_LEVEL_FINISHED: u32 = 1 << 2;
+const FLAG_EGG_FOUND: u32 = 1 << 3;
+const FLAG_QUIT_TO_MENU: u32 = 1 << 4;
 
 asr::async_main!(stable);
 asr::panic_handler!();
@@ -74,6 +76,7 @@ async fn main() {
                 let data_address = data_address_option.unwrap();
 
                 let mut level_watcher: Watcher<i32> = Watcher::new();
+                // Watcher for each flag
                 let mut is_loading_watcher: Watcher<bool> = Watcher::new();
                 let mut level_started_watcher: Watcher<bool> = Watcher::new();
                 let mut level_finished_watcher: Watcher<bool> = Watcher::new();
@@ -91,43 +94,19 @@ async fn main() {
                     level_watcher.update_infallible(-1);
                 }
 
-                if let Ok(is_loading) = process.read(data_address + IS_LOADING_OFFSET) {
-                    print_limited::<128>(&format_args!("Initial value for is loading: {}", is_loading));
-                    is_loading_watcher.update_infallible(is_loading);
+                if let Ok(flags) = process.read::<u32>(data_address + FLAGS_OFFSET) {
+                    print_limited::<128>(&format_args!("Initial value for flags: {}", flags));
+                    is_loading_watcher.update_infallible((flags & FLAG_IS_LOADING) != 0);
+                    level_started_watcher.update_infallible((flags & FLAG_LEVEL_STARTED) != 0);
+                    level_finished_watcher.update_infallible((flags & FLAG_LEVEL_FINISHED) != 0);
+                    egg_found_watcher.update_infallible((flags & FLAG_EGG_FOUND) != 0);
+                    quit_to_menu_watcher.update_infallible((flags & FLAG_QUIT_TO_MENU) != 0);
                 } else {
                     print_message("Failed to read is loading!!");
                     is_loading_watcher.update_infallible(false);
-                }
-
-                if let Ok(level_started) = process.read(data_address + LEVEL_STARTED_OFFSET) {
-                    print_limited::<128>(&format_args!("Initial value for level started: {}", level_started));
-                    level_started_watcher.update_infallible(level_started);
-                } else {
-                    print_message("Failed to read level started!!");
                     level_started_watcher.update_infallible(false);
-                }
-
-                if let Ok(level_finished) = process.read(data_address + LEVEL_FINISHED_OFFSET) {
-                    print_limited::<128>(&format_args!("Initial value for level finished: {}", level_finished));
-                    level_finished_watcher.update_infallible(level_finished);
-                } else {
-                    print_message("Failed to read level finished!!");
                     level_finished_watcher.update_infallible(false);
-                }
-
-                if let Ok(egg_found) = process.read(data_address + EGG_FOUND_OFFSET) {
-                    print_limited::<128>(&format_args!("Initial value for egg found: {}", egg_found));
-                    egg_found_watcher.update_infallible(egg_found);
-                } else {
-                    print_message("Failed to read egg found!!");
                     egg_found_watcher.update_infallible(false);
-                }
-
-                if let Ok(quit_to_menu) = process.read(data_address + QUIT_TO_MENU_OFFSET) {
-                    print_limited::<128>(&format_args!("Initial value for quit to menu: {}", quit_to_menu));
-                    quit_to_menu_watcher.update_infallible(quit_to_menu);
-                } else {
-                    print_message("Failed to read quit_to_menu!!");
                     quit_to_menu_watcher.update_infallible(false);
                 }
 
@@ -135,11 +114,15 @@ async fn main() {
                     settings.update();
 
                     level_watcher.update(process.read(data_address + LEVEL_OFFSET).ok());
-                    is_loading_watcher.update(process.read(data_address + IS_LOADING_OFFSET).ok());
-                    level_started_watcher.update(process.read(data_address + LEVEL_STARTED_OFFSET).ok());
-                    level_finished_watcher.update(process.read(data_address + LEVEL_FINISHED_OFFSET).ok());
-                    egg_found_watcher.update(process.read(data_address + EGG_FOUND_OFFSET).ok());
-                    quit_to_menu_watcher.update(process.read(data_address + QUIT_TO_MENU_OFFSET).ok());
+                    if let Ok(flags) = process.read::<u32>(data_address + FLAGS_OFFSET) {
+                        is_loading_watcher.update_infallible((flags & FLAG_IS_LOADING) != 0);
+                        level_started_watcher.update_infallible((flags & FLAG_LEVEL_STARTED) != 0);
+                        level_finished_watcher.update_infallible((flags & FLAG_LEVEL_FINISHED) != 0);
+                        egg_found_watcher.update_infallible((flags & FLAG_EGG_FOUND) != 0);
+                        quit_to_menu_watcher.update_infallible((flags & FLAG_QUIT_TO_MENU) != 0);
+                    } else {
+                        print_message("Failed to read flags!");
+                    }
 
                     if let Some(level) = level_watcher.pair {
                         if level.changed() {
